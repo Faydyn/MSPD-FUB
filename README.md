@@ -6,7 +6,7 @@ If you need help, send a mail to: [nils.seitz@googlemail.com](mailto:nils.seitz@
 
 ## Setup
 1. Get testcases from original contest repo (and put inside contest/testcases)
-2. Install necessary packages (`conda create --name <env> --file requirements.txt`)
+2. Install necessary packages (`conda create --name <env> --file requirements.txt`, `pip install -r requirements.txt`)
 3. Run inference (see Use)
 
 ## Packages used
