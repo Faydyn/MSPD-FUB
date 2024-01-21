@@ -12,6 +12,7 @@ from sklearn.metrics import mean_squared_error
 ######## YOU CAN ONLY MODIFY FROM HERE UNTIL THE NEXT ##.. COMMENTS ###########
 
 # Imports
+import sys
 import logging
 import os
 
@@ -21,7 +22,6 @@ logging.getLogger('tensorflow').setLevel(logging.FATAL)
 import numpy as np
 from sklearn import cluster
 import tensorflow as tf
-
 tf.get_logger().setLevel('FATAL')
 
 from tensorflow.keras.layers import Dense, Flatten, Dropout
@@ -29,6 +29,7 @@ from tensorflow.keras.initializers import glorot_uniform
 
 from spektral.data import Graph, Dataset, BatchLoader
 from spektral.layers import GCNConv, GlobalMaxPool, GlobalAvgPool, GraphMasking
+
 
 # Magic Constants
 N_MAX: int = 50
@@ -53,40 +54,41 @@ MIN_DIST_TWO_SRC: float = 180.0 / 2002.0  # normed for a max dist of 1
 MIN_DIST_THREE_SRC: float = 185.0 / 2002.0
 MAX_DIST_MULTI_SRC: float = 1300.0 / 2002.0
 # 2nd Filter (Skew approx, obj1/2)
-# MIN_SKEW_INCLUDE_RATIO = np.array([1.5, 1.15, 100.0])
-# INC_SKEW = np.array([1 / 25, 1 / 400, 0.0])
+#MIN_SKEW_INCLUDE_RATIO = np.array([1.5, 1.15, 100.0])
+#INC_SKEW = np.array([1 / 25, 1 / 400, 0.0])
 MIN_SKEW_INCLUDE_RATIO = {
-    10: np.array([1.75, 1.29, 2.2]),
-    15: np.array([2.05, 1.1875, 2.0]),
-    25: np.array([2.4, 1.35, 2.0]),
-    30: np.array([2.3, 1.45, 2.2]),
-    40: np.array([2.3, 1.6, 2.1]),
-    45: np.array([2.3, 1.55, 2.2]),
-    50: np.array([2.3, 1.5, 2.1]),
+        10: np.array([1.75, 1.29, 2.2]),
+        15: np.array([2.05, 1.1875, 2.0]),
+        25: np.array([2.4, 1.35, 2.0]),
+        30: np.array([2.3, 1.45, 2.2]),
+        40: np.array([2.3, 1.6, 2.1]),
+        45: np.array([2.3, 1.55, 2.2]),
+        50: np.array([2.3, 1.5, 2.1]),
 }
 
 # Weight Intensity (from Skew Weights)
-# SCALE_FAC_START = np.array([0.73, 0.79, 0.975])
-# INC_PER_N = np.array([1 / 200, 1 / 700, 1 / 1000])
+#SCALE_FAC_START = np.array([0.73, 0.79, 0.975])
+#INC_PER_N = np.array([1 / 200, 1 / 700, 1 / 1000])
 SCALE_FAC_START = {
-    10: np.array([0.835, 0.77, 0.995]),
-    15: np.array([0.82, 0.83, 0.98]),
-    25: np.array([0.86, 0.75, 0.995]),
-    30: np.array([0.91, 0.69, 0.985]),
-    40: np.array([0.94, 0.71, 0.98]),
-    45: np.array([0.93, 0.72, 0.99]),
-    50: np.array([0.945, 0.7, 0.985]),
+        10: np.array([0.835, 0.77, 0.995]),
+        15: np.array([0.82, 0.83, 0.98]),
+        25: np.array([0.86, 0.75, 0.995]),
+        30: np.array([0.91, 0.69, 0.985]),
+        40: np.array([0.94, 0.71, 0.98]),
+        45: np.array([0.93, 0.72, 0.99]),
+        50: np.array([0.945, 0.7, 0.985]),
 }
 
 CLUSTER_AMOUNT = {
-    10: np.array([3, 0, 4]),
-    15: np.array([5, 0, 6]),
-    25: np.array([8, 0, 7]),
-    30: np.array([6, 0, 9]),
-    40: np.array([8, 0, 8]),
-    45: np.array([6, 0, 7]),
-    50: np.array([6, 0, 6]),
+        10: np.array([3, 0, 4]),
+        15: np.array([5, 0, 6]),
+        25: np.array([8, 0, 7]),
+        30: np.array([6, 0, 9]),
+        40: np.array([8, 0, 8]),
+        45: np.array([6, 0, 7]),
+        50: np.array([6, 0, 6]),
 }
+
 
 # UNOPTIMIZED
 # Region Threshold (obj1/3)
@@ -119,8 +121,7 @@ class MSPDContestModel(tf.keras.Model):
     def __init__(self, **kwargs):
         super().__init__(kwargs)
         self.mask = GraphMasking()
-        self.conv = GCNConv(32, mode='batch',
-                            kernel_initializer=glorot_uniform())
+        self.conv = GCNConv(32, mode='batch', kernel_initializer=glorot_uniform())
         self.flatten_avg = GlobalAvgPool()
         self.flatten_max = GlobalMaxPool()
         self.flat = Flatten()
@@ -169,20 +170,19 @@ class MSPDContestNet(Dataset):
     def scale_fac(self):
         return 1 - SCALE_FAC_START[self.N][self.obj - 1]
 
+
     def calc_weights(self, src_ids):
         mins = np.zeros(len(src_ids))
         maxs = np.zeros(len(src_ids))
         for src_id_enum, tup in enumerate(src_ids):
             mins[src_id_enum] = np.min([self.adj_mat[0][idx] for idx in tup])
             maxs[src_id_enum] = np.max(
-                np.min([self.adj_mat[idx][1:] + self.adj_mat[0][idx] for idx in
-                        tup], axis=0)
+                    np.min([self.adj_mat[idx][1:] + self.adj_mat[0][idx] for idx in tup], axis=0)
             )
 
         min_skews = maxs - mins
         best_min_skew = min_skews[np.argmin(min_skews)]
-        threshold = best_min_skew * (
-        MIN_SKEW_INCLUDE_RATIO[self.N][self.obj - 1])
+        threshold = best_min_skew * (MIN_SKEW_INCLUDE_RATIO[self.N][self.obj - 1])
         filtered_src_enum = np.where(min_skews < threshold)[0]
         self.WEIGHTS = np.array([
             min_skews[i] for i in filtered_src_enum
@@ -192,31 +192,28 @@ class MSPDContestNet(Dataset):
         self.WEIGHTS -= np.min(self.WEIGHTS)
         if np.max(self.WEIGHTS) > 0:
             self.WEIGHTS /= np.max(self.WEIGHTS)  # [0,1]
-            self.WEIGHTS *= self.scale_fac()  # [0,x]
-            self.WEIGHTS = 1 - self.WEIGHTS  # [1-x,1] as weight
+            self.WEIGHTS *= self.scale_fac()      # [0,x]
+            self.WEIGHTS = 1 - self.WEIGHTS       # [1-x,1] as weight
         else:
             self.WEIGHTS += 1
 
         return [src_ids[src_id_enum] for src_id_enum in filtered_src_enum]
+
 
     def prep_df(self):
         if self.obj == 2:
             src_ids = [(i,) for i in range(1, self.N)]
             src_ids += [(i, j) for i in range(1, self.N)
                         for j in range(i + 1, self.N)
-                        if MAX_DIST_MULTI_SRC > self.adj_mat[i][
-                            j] > MIN_DIST_TWO_SRC]
+                        if MAX_DIST_MULTI_SRC > self.adj_mat[i][j] > MIN_DIST_TWO_SRC]
 
             if self.N < 25:  # combinatorical reasons
                 src_ids += [(i, j, k) for i in range(1, self.N)
                             for j in range(i + 1, self.N) for k in
                             range(j + 1, self.N)
-                            if MAX_DIST_MULTI_SRC > self.adj_mat[i][
-                                j] > MIN_DIST_THREE_SRC
-                            and MAX_DIST_MULTI_SRC > self.adj_mat[i][
-                                k] > MIN_DIST_THREE_SRC
-                            and MAX_DIST_MULTI_SRC > self.adj_mat[j][
-                                k] > MIN_DIST_THREE_SRC]
+                            if MAX_DIST_MULTI_SRC > self.adj_mat[i][j] > MIN_DIST_THREE_SRC
+                            and MAX_DIST_MULTI_SRC > self.adj_mat[i][k] > MIN_DIST_THREE_SRC
+                            and MAX_DIST_MULTI_SRC > self.adj_mat[j][k] > MIN_DIST_THREE_SRC]
 
             return self.calc_weights(src_ids)
 
@@ -235,8 +232,7 @@ class MSPDContestNet(Dataset):
             include_2 = include_obj3[1][self.area_num]
             include_3 = include_obj3[2][self.area_num]
 
-        abs_diffs = np.abs(self.xs - x) + np.abs(
-            self.ys - y)  # from x_center,y_center
+        abs_diffs = np.abs(self.xs - x) + np.abs( self.ys - y)  # from x_center,y_center
 
         size = 0
         while size < 4:
@@ -279,6 +275,7 @@ class MSPDContestNet(Dataset):
                             filtered_vertices.append(
                                 (new_dict[i], new_dict[j], new_dict[k]))
 
+
         return self.calc_weights(filtered_vertices)
 
     def read(self) -> [Graph]:
@@ -304,7 +301,6 @@ class MSPDContestNet(Dataset):
         k = min(CLUSTER_AMOUNT[self.N][self.obj - 1], len(xs))
         model = cluster.AgglomerativeClustering(n_clusters=k, linkage='single')
         return model.fit([[x, y] for x, y in zip(xs, ys)]).labels_
-
 
 class ContestModel:
     def __init__(self):
@@ -339,9 +335,9 @@ class ContestModel:
         return list(src_comb)[:MAX_SOURCES]  # safety slice (in case of bugs)
 
     def check_reload(self, N: int, obj: int, input_df: pd.DataFrame) -> None:
-        # if self.N == 10 and obj == 1:
+        #if self.N == 10 and obj == 1:
         #    self.obj = 2  # skew more important
-        # else:
+        #else:
         self.obj = obj
 
         input_arr: np.ndarray = np.array(input_df.iloc[0])
@@ -440,6 +436,7 @@ class ContestModel:
         else:
             self.area_num = 5
 
+
     def init_models(self):
         # Load model (with dummy structure)
         shaper: BatchLoader = BatchLoader(MSPDDummy(), **LOADER_SETTINGS)
@@ -500,78 +497,139 @@ def GetResultIdx(resultIdxList, sourceDf):
 
 
 # signal setup for maximum runtime limit
-signal.signal(signal.SIGALRM, Handler)
 
-listK = [1, 1, 1, 1, 2, 2, 2]
-MSEs = []
 
-# for various N
-for n in [10, 15, 25, 30, 40, 45, 50]:
-    dataObjDf = pd.read_csv("testcases/data_obj_stt_%d.csv.gz" % (n),
-                            compression="gzip")
-    inputDf = pd.read_csv("testcases/input_stt_%d.csv.gz" % (n),
-                          compression="gzip")
-    sourceDf = pd.read_csv("testcases/sources_stt_%d.csv.gz" % (n),
-                           compression="gzip")
 
-    # save predicted result
-    # first index: N
-    # second index: netIdx
-    predictArr = [[], [], []]
+def eval_contest():
+    listK = [1, 1, 1, 1, 2, 2, 2]
+    MSEs = []
 
-    # there will be hidden testcases (200 more nets)
-    for netIdx in range(0, 300):
-        netInputDf = inputDf.loc[inputDf['netIdx'] == netIdx]
-        netDataObjDf = dataObjDf.loc[dataObjDf['netIdx'] == netIdx]
+    # for various N
+    for n in [10, 15,25, 30, 40, 45, 50]:
 
-        # for each objective (1,2,3)
-        for objectiveN in range(1, 4):
-            # for runtime limit - 10 seconds
-            signal.alarm(10)
 
-            # call the Inference function
-            isFailed = False
-            try:
-                resultIdxList = Inference(n, objectiveN, netInputDf)
-            except Exception as e:
-                print(
-                    "Warning: Runtime Limit Exceeded. Penalty will be applied")
-                isFailed = True
+        #if n == 10:
+        #  dataObjDf = pd.read_csv("testcases/TRAIN_data_obj_stt_%d.csv.gz" %(n), compression="gzip").head(130*600)
+        #  inputDf = pd.read_csv("testcases/TRAIN_input_stt_%d.csv.gz" % (n), compression="gzip").head(600)
+        #
+        #elif n == 15:
+        if n <= 15:
+          dataObjDf = pd.read_csv("testcases/data_obj_stt_%d.csv.gz" %(n), compression="gzip")
+          inputDf = pd.read_csv("testcases/input_stt_%d.csv.gz" % (n), compression="gzip")
+        else:
+          dataObjDf = pd.read_csv("testcases/data_obj_stt_%d.csv" %(n))
+          inputDf = pd.read_csv("testcases/input_stt_%d.csv.gz" % (n), compression="gzip")
 
-            if isFailed == False:
-                # retrieve sourceIdx using sourceDataFrame
-                resultIdx = GetResultIdx(resultIdxList, sourceDf)
+        sourceDf = pd.read_csv("testcases/sources_stt_%d.csv.gz" % (n), compression="gzip")
 
-                predictedObj = \
-                netDataObjDf.loc[netDataObjDf['sourceIdx'] == resultIdx][
-                    'obj%d' % (objectiveN)].values[0]
-                predictArr[objectiveN - 1].append(predictedObj)
-            else:
-                # append "-1" flag variable - runtime exceeded
-                predictArr[objectiveN - 1].append(-1)
+        # save predicted result
+        # first index: N
+        # second index: netIdx
+        predictArr = [[], [], []]
 
-        # extract the best cost value
-        bestCostValue = [netDataObjDf['obj%d' % (i)].min() for i in range(1, 4)]
+        # there will be hidden testcases (200 more nets)
+        offset = 0 if n == 10 else 0
+        for netIdx in range(0, 300):
+            netInputDf = inputDf.loc[inputDf['netIdx'] == (netIdx + offset)]
+            netDataObjDf = dataObjDf.loc[dataObjDf['netIdx'] == (netIdx + offset)]
+            # for each objective (1,2,3)
+            for objectiveN in range(1, 4):
+                # for runtime limit - 10 seconds
 
-        # take the "ratio" instead of raw value
-        # predictedValue /= bestCostValue
-        for i, val in enumerate(bestCostValue):
-            # normal predicted case
-            if predictArr[i][-1] != -1:
-                predictArr[i][-1] /= val
-            # runtime exceeded case
-            else:
-                predictArr[i][-1] = 1.5
+                # call the Inference function
+                isFailed = False
+                #try:
+                if objectiveN != 2:
+                    resultIdxList = Inference(n, objectiveN, netInputDf)
+                else:
+                    resultIdxList = [1]
+                #except Exception as e:
+                #    print( "Warning: Runtime Limit Exceeded. Penalty will be applied")
+                #    isFailed = True
 
-    # best cost is normalized as "1"
-    bestCostArr = [[1] * len(predictArr[0]) for _ in range(3)]
+                if isFailed == False:
+                    # retrieve sourceIdx using sourceDataFrame
+                    resultIdx = GetResultIdx(resultIdxList, sourceDf)
 
-    MSE = [mean_squared_error(bestCostArr[i], predictArr[i]) for i in range(3)]
-    print("for n =", n, ", MSE(mean squared error) of three objectives =", MSE)
-    MSEs.append(MSE)
+                    predictedObj = \
+                        netDataObjDf.loc[netDataObjDf['sourceIdx'] == resultIdx][
+                            'obj%d' % (objectiveN)].values[0]
+                    predictArr[objectiveN - 1].append(predictedObj)
+                else:
+                    # append "-1" flag variable - runtime exceeded
+                    predictArr[objectiveN - 1].append(-1)
 
-evalMetric = 0
-for k, MSE in zip(listK, MSEs):
-    evalMetric += k * sum(MSE)
+            # extract the best cost value
+            bestCostValue = [netDataObjDf['obj%d' % (i)].min() for i in range(1, 4)]
 
-print("EvalMetric: ", evalMetric)
+            # take the "ratio" instead of raw value
+            # predictedValue /= bestCostValue
+            for i, val in enumerate(bestCostValue):
+                # normal predicted case
+                if predictArr[i][-1] != -1:
+                    predictArr[i][-1] /= val
+                # runtime exceeded case
+                else:
+                    predictArr[i][-1] = 1.5
+
+        # best cost is normalized as "1"
+        bestCostArr = [[1] * len(predictArr[0]) for _ in range(3)]
+
+        MSE = [mean_squared_error(bestCostArr[i], predictArr[i]) for i in range(3)]
+        print("    for n =", n, ", MSE(mean squared error) of three objectives =", MSE)
+        MSEs.append(MSE)
+
+    evalMetric = 0
+    for k, MSE in zip(listK, MSEs):
+        evalMetric += k * sum(MSE)
+
+    print("    EvalMetric: ", evalMetric)
+    return evalMetric
+
+best_dict = {
+    'metric' : 1000,
+    'c' : None,
+}
+
+def auto_tune(c):
+    global CLUSTER_AMOUNT
+    CLUSTER_AMOUNT = c
+
+    contest_model = ContestModel()
+    new_metric = eval_contest()
+
+    if new_metric < best_dict['metric']:
+        print('new best!')
+        best_dict['metric'] = new_metric
+        best_dict['c'] = c
+        print(list(best_dict.items()))
+
+# (45,1)
+
+C =[
+        {
+        10: np.array([4, 0, 4]),
+        15: np.array([5, 0, 5]),
+        25: np.array([6, 0, 6]),
+        30: np.array([6, 0, 6]),
+        40: np.array([6, 0, 6]),
+        45: np.array([6, 0, 6]),
+        50: np.array([6, 0, 6]),
+        },
+        {
+        10: np.array([3, 0, 4]),
+        15: np.array([5, 0, 6]),
+        25: np.array([8, 0, 7]),
+        30: np.array([6, 0, 9]),
+        40: np.array([8, 0, 8]),
+        45: np.array([6, 0, 7]),
+        50: np.array([6, 0, 6]),
+        }
+    ]
+for c in C:
+        auto_tune(c)
+
+print()
+for k,v in best_dict.items():
+    print(k," : ",  v)
+sys.exit(0)
