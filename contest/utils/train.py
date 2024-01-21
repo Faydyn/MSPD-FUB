@@ -27,7 +27,7 @@ SAVE_PATH = './weights'
 params = {
     'classes' : 1,
     'col_name' : 'rating',
-    'obj_num' : 3,
+    'obj_num' : 1,
     # start: 0,
     'norm' : True,
     'TIMEIT': 1,
@@ -212,8 +212,8 @@ class MSPDTrainSet(Dataset):
         self.TIMEIT = TIMEIT
 
         self.data_obj_df = pd.read_csv(
-            f"{DATA_PATH}/TRAIN_data_obj_stt_{N}.csv.gz", compression="gzip")
-        self.input_df = pd.read_csv(f"{DATA_PATH}/TRAIN_input_stt_{N}.csv.gz",
+            f"{DATA_PATH}/data_obj_stt_{N}.csv.gz", compression="gzip")
+        self.input_df = pd.read_csv(f"{DATA_PATH}/input_stt_{N}.csv.gz",
                                     compression="gzip")
         self.src_df = pd.read_csv(f"{DATA_PATH}/sources_stt_{N}.csv.gz",
                                   compression="gzip")
@@ -554,7 +554,7 @@ class Mspd10(tf.keras.Model):
 
 
 ending = {
-    10: 400,
+    10: 300,
     15: 1800,
     25: 1800,
     30: 1000,
@@ -571,19 +571,19 @@ ending_contest = {
     45: 300,
     50: 300
 }
-split_val = 300
+split_val = 250
 n = 10
 d_train = MSPDTrainSet(N=n,start=0,end=split_val, **params)
 d_valid = MSPDTrainSet(N=n,start=split_val,end= ending.get(n, 300), **params)
-contest = MSPDTrainSet(N=n,start=0,end= ending_contest.get(n, 300), **params)
+# contest = MSPDTrainSet(N=n,start=0,end= ending_contest.get(n, 300), **params)
 
 train, valid = d_train, d_valid
 np.random.shuffle(valid)
 np.random.shuffle(train)
 
-epochs = 4000
+epochs = 400
 batch_size = 128
-patience = 250
+patience = 25
 data_early_stop = 0.00001
 path_weights = f'{SAVE_PATH}/best_weights.h5'
 
@@ -639,10 +639,10 @@ history = model.fit(
     validation_steps=loader_valid.steps_per_epoch,
     epochs=epochs,
     callbacks=callbacks_list,
-    class_weight=weights if not is_regression else None
+    # class_weight=weights if not is_regression else None
 )
-loader_test = PackedBatchLoader(contest,batch_size=batch_size, mask=True)
-print(model.evaluate(loader_test.load(),
-                     steps=loader_valid.steps_per_epoch,
-                     verbose=2))
-print(model.predict(loader_test.load(), steps=loader_valid.steps_per_epoch,verbose=2))
+# loader_test = PackedBatchLoader(contest,batch_size=batch_size, mask=True)
+# print(model.evaluate(loader_test.load(),
+#                      steps=loader_valid.steps_per_epoch,
+#                      verbose=2))
+# print(model.predict(loader_test.load(), steps=loader_valid.steps_per_epoch,verbose=2))
